@@ -42,4 +42,4 @@ jobs:
     - name: Create Instance template
       run: gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME --container-image $WS_IMAGE:latest
     - name: Create MIG
-      run: gcloud compute instance-groups managed create ws-group --base-instance-name ws-instance --size 2 --template $WS_TEMPLATE_NAME --region europe-west1-b
+      run: gcloud compute instance-groups managed create ws-group --base-instance-name ws-instance --size 2 --template $WS_TEMPLATE_NAME --zone europe-west1-b
