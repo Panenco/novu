@@ -4,16 +4,21 @@ on:
   push:
     branches: [ "panenco" ]
 
+env:
+  WS_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
+  API_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api
+  WS_TEMPLATE_NAME: ws-template
+
 jobs:
   deploy_ws:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
-    - name: Install pnpm
-      uses: pnpm/action-setup@v2.2.4
-    - name: Install deps
-      run: cd apps/api && pnpm --filter novuhq install
+    # - name: Install pnpm
+    #   uses: pnpm/action-setup@v2.2.4
+    # - name: Install deps
+    #   run: cd apps/api && pnpm --filter novuhq install
     - name: Login
       uses: 'google-github-actions/auth@v0'
       with:
@@ -22,15 +27,20 @@ jobs:
       uses: google-github-actions/setup-gcloud@v0
     - name: Set project
       run: gcloud --quiet config set project ${{secrets.GOOGLE_PROJECT_ID}}
-    - name: Docker google auth
-      run: gcloud auth configure-docker -q
-    - name: Build API image
-      run: DOCKER_BUILDKIT=1 pnpm docker:build
-    - name: Build WS image
-      run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
-    - name: Tag image
-      run: docker tag novu_ws eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
-    - name: Push image
-      run: docker push eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
-    - name: Deploy to Compute engine
-      run: gcloud compute instances update-container ws --zone europe-west1-b --container-image eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}:latest
+    # - name: Docker google auth
+    #   run: gcloud auth configure-docker -q
+    # - name: Build API image
+    #   run: DOCKER_BUILDKIT=1 pnpm docker:build
+    # - name: Build WS image
+    #   run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
+    # - name: Tag image
+    #   run: docker tag novu_ws $WS_IMAGE
+    # - name: Push image
+    #   run: docker push $WS_IMAGE
+    - name: Create Instance template
+      run: gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME --container-image $WS_IMAGE:latest
+    - name: Create MIG
+      run: gcloud compute instance-groups managed create ws-group \
+          --base-instance-name ws-instance \
+          --size 2 \
+          --template $WS_TEMPLATE_NAME
