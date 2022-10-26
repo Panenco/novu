@@ -7,7 +7,7 @@ on:
 env:
   WS_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
   API_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api
-  WS_TEMPLATE_NAME: ws-template-${{github.sha}}
+  WS_TEMPLATE_NAME: ws-template-${{github.run_number}}
   WS_GROUP_NAME: ws-group-new
   ZONE:  europe-west1-b
 
