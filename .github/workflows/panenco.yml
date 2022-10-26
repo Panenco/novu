@@ -1,0 +1,18 @@
+name: "Panenco"
+
+on:
+  push:
+    branches: [ "panenco" ]
+
+jobs:
+  deploy_ws:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Build image
+      run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
+    - name: Tag image
+      run: docker tag novu_ws eu.gcr.io/novu-363712/novu-ws
+    - name: Push image
+      run: docker push eu.gcr.io/novu-363712/novu-ws
