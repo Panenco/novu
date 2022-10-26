@@ -10,10 +10,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
-    - name: Build image
-      run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
-    - name: Tag image
-      run: docker tag novu_ws eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
     - name: Login
       uses: 'google-github-actions/auth@v0'
       with:
@@ -24,5 +20,9 @@ jobs:
       run: gcloud --quiet config set project /${{secrets.GOOGLE_PROJECT_ID}}
     - name: Docker google auth
       run: gcloud auth configure-docker -q
+    - name: Build image
+      run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
+    - name: Tag image
+      run: docker tag novu_ws eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
     - name: Push image
       run: docker push eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
