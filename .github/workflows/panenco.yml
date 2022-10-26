@@ -8,7 +8,7 @@ env:
   WS_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
   API_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api
   WS_TEMPLATE_NAME: ws-template-${{github.run_number}}
-  WS_GROUP_NAME: ws-group-new
+  WS_GROUP_NAME: ws-group
   ZONE:  europe-west1-b
 
 jobs:
@@ -71,6 +71,13 @@ jobs:
         --size 2
         --template $WS_TEMPLATE_NAME
         --zone $ZONE
+
+    - name: Set named ports on MIG
+      if: steps.mig_exists.outcome != 'success'
+      run: >
+        gcloud compute instance-groups set-named-ports $WS_GROUP_NAME
+        --named-ports=ws:3002 
+        --zone=$ZONE
 
     - name: Perform rolling update on MIG
       if: steps.mig_exists.outcome == 'success'
