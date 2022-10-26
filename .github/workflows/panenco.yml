@@ -7,7 +7,8 @@ on:
 env:
   WS_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
   API_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api
-  WS_TEMPLATE_NAME: ws-template
+  WS_TEMPLATE_NAME: ws-template:$GITHUB_SHA
+  WS_GROUP_NAME: ws-group
 
 jobs:
   deploy_ws:
@@ -37,9 +38,10 @@ jobs:
     #   run: docker tag novu_ws $WS_IMAGE
     # - name: Push image
     #   run: docker push $WS_IMAGE
-    - name: Delete Instance template
-      run: gcloud compute instance-templates delete $WS_TEMPLATE_NAME
     - name: Create Instance template
       run: gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME --container-image $WS_IMAGE:latest
-    - name: Create MIG
-      run: gcloud compute instance-groups managed create ws-group --base-instance-name ws-instance --size 2 --template $WS_TEMPLATE_NAME --zone europe-west1-b
+    
+    # - name: Create MIG
+    #   run: gcloud compute instance-groups managed create ws-group --base-instance-name ws-instance --size 2 --template $WS_TEMPLATE_NAME --zone europe-west1-b
+    - name: Perform rolling update on MIG
+      run: gcloud compute instance-groups managed rolling-action start-update $WS_GROUP --version=template=$WS_TEMPLATE_NAME --zone europe-west1-b
