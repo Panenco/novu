@@ -9,6 +9,7 @@ env:
   API_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api
   WS_TEMPLATE_NAME: ws-template-${{github.sha}}
   WS_GROUP_NAME: ws-group-new
+  ZONE:  europe-west1-b
 
 jobs:
   deploy_ws:
@@ -40,8 +41,12 @@ jobs:
     #   run: docker push $WS_IMAGE
     - name: Create Instance template
       run: gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME --container-image $WS_IMAGE:latest --machine-type e2-micro
-    
-    # - name: Create MIG
-    #   run: gcloud compute instance-groups managed create ws-group --base-instance-name ws-instance --size 2 --template $WS_TEMPLATE_NAME --zone europe-west1-b
+    - name: Check if MIG exists
+      id: mig_exists
+      continue-on-error: true
+      run: gcloud compute instance-groups managed describe $WS_GROUP_NAME --zone $ZONE
+    - name: Create MIG if it doesn't exist
+      if: steps.mig_exists.outcome != 'success'
+      run: gcloud compute instance-groups managed create ws-group --base-instance-name ws-instance --size 2 --template $WS_TEMPLATE_NAME --zone $ZONE
     - name: Perform rolling update on MIG
-      run: gcloud compute instance-groups managed rolling-action start-update $WS_GROUP_NAME --version=template=$WS_TEMPLATE_NAME --zone europe-west1-b
+      run: gcloud compute instance-groups managed rolling-action start-update $WS_GROUP_NAME --version=template=$WS_TEMPLATE_NAME --zone $ZONE
