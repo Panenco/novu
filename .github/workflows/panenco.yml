@@ -10,6 +10,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
+    - name: Install deps
+      run: cd apps/api && pnpm docker:build
     - name: Login
       uses: 'google-github-actions/auth@v0'
       with:
@@ -26,3 +28,5 @@ jobs:
       run: docker tag novu_ws eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
     - name: Push image
       run: docker push eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
+    - name: Deploy to Compute engine
+      run: gcloud compute instances update-container ws --zone europe-west1-b --container-image eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}:latest
