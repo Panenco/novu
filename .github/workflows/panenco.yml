@@ -50,7 +50,7 @@ jobs:
     - name: Create env file
       run: gcloud secrets versions access latest --secret=novu > .env.docker
 
-    - name: Create Instance template
+    - name: Create instance template
       run: >
         gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME
         --container-env-file .env.docker
