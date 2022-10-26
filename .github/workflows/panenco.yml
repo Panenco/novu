@@ -7,7 +7,7 @@ on:
 env:
   WS_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
   API_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api
-  WS_TEMPLATE_NAME: ws-template-$GITHUB_SHA
+  WS_TEMPLATE_NAME: ws-template-{{github.sha}}
   WS_GROUP_NAME: ws-group
 
 jobs:
