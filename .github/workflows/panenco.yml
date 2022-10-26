@@ -13,7 +13,7 @@ jobs:
     - name: Install pnpm
       uses: pnpm/action-setup@v2.2.4
     - name: Install deps
-      run: pnpm install && pnpm --silent --workspace-root pnpm-context -- apps/api/Dockerfile
+      run: cd apps/api && pnpm install && pnpm docker:build
     - name: Login
       uses: 'google-github-actions/auth@v0'
       with:
