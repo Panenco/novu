@@ -1,9 +1,9 @@
 version: "3"
 services:
-  api:
-    build:
-      dockerfile: "apps/api/Dockerfile"
-      context: "../"
+  # api:
+  #   build:
+  #     dockerfile: "apps/api/Dockerfile"
+  #     context: "../"
   ws:
     build:
       dockerfile: "apps/ws/Dockerfile"
