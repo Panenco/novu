@@ -38,7 +38,7 @@ jobs:
 
     # - name: Build API image
     #   run: DOCKER_BUILDKIT=1 pnpm docker:build
-    
+
     - name: Build WS image
       run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
 
@@ -56,6 +56,7 @@ jobs:
         --container-env-file .env.docker
         --container-image $WS_IMAGE:latest 
         --machine-type e2-micro
+        --tags=allow-health-check
 
     - name: Check if MIG exists
       id: mig_exists
