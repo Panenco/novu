@@ -46,9 +46,13 @@ jobs:
     # - name: Push image
     #   run: docker push $WS_IMAGE
 
+    - name: Create env file
+      run: gcloud secrets versions access latest --secret=novu > .env.docker
+
     - name: Create Instance template
       run: >
         gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME
+        --container-env-file env.docker
         --container-image $WS_IMAGE:latest 
         --machine-type e2-micro
 
