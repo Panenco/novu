@@ -39,7 +39,7 @@ jobs:
     # - name: Build API image
     #   run: DOCKER_BUILDKIT=1 pnpm docker:build
 
-    - name: Build WS image
+    - name: Build image
       run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
 
     - name: Tag image
