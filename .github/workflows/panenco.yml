@@ -69,6 +69,7 @@ jobs:
       if: steps.mig_exists.outcome != 'success'
       run: >
         gcloud compute instance-groups managed create $WS_GROUP_NAME
+        --health-check ws-health-check
         --base-instance-name ws-instance
         --size 2
         --template $WS_TEMPLATE_NAME
