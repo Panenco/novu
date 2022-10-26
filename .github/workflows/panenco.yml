@@ -33,18 +33,18 @@ jobs:
     - name: Set project
       run: gcloud --quiet config set project ${{secrets.GOOGLE_PROJECT_ID}}
 
-    # - name: Docker google auth
-    #   run: gcloud auth configure-docker -q
+    - name: Docker google auth
+      run: gcloud auth configure-docker -q
 
     # - name: Build API image
     #   run: DOCKER_BUILDKIT=1 pnpm docker:build
     # - name: Build WS image
     #   run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
 
-    # - name: Tag image
-    #   run: docker tag novu_ws $WS_IMAGE
-    # - name: Push image
-    #   run: docker push $WS_IMAGE
+    - name: Tag image
+      run: docker tag novu_ws $WS_IMAGE
+    - name: Push image
+      run: docker push $WS_IMAGE
 
     - name: Create env file
       run: gcloud secrets versions access latest --secret=novu > .env.docker
