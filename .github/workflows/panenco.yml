@@ -14,12 +14,15 @@ jobs:
       run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
     - name: Tag image
       run: docker tag novu_ws eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
-    - name: Docker google login
-      uses: actions-hub/gcloud@master
-      env:
-        PROJECT_ID: ${{secrets.GOOGLE_PROJECT_ID}}
-        APPLICATION_CREDENTIALS: ${{secrets.GOOGLE_APPLICATION_CREDENTIALS}}
+    - name: Login
+      uses: 'google-github-actions/auth@v0'
       with:
-        args: auth configure-docker -q
+        credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v0
+    - name: Set project
+      run: gcloud --quiet config set project /${{secrets.GOOGLE_PROJECT_ID}}
+    - name: Docker google auth
+      run: gcloud auth configure-docker -q
     - name: Push image
       run: docker push eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
