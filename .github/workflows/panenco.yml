@@ -45,3 +45,4 @@ jobs:
           --base-instance-name ws-instance \
           --size 2 \
           --template $WS_TEMPLATE_NAME
+          --region europe-west1-b
