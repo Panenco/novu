@@ -47,7 +47,7 @@ jobs:
       run: gcloud compute instance-groups managed describe $WS_GROUP_NAME --zone $ZONE
     - name: Create MIG if it doesn't exist
       if: steps.mig_exists.outcome != 'success'
-      run: gcloud compute instance-groups managed create $$WS_GROUP_NAME --base-instance-name ws-instance --size 2 --template $WS_TEMPLATE_NAME --zone $ZONE
+      run: gcloud compute instance-groups managed create $WS_GROUP_NAME --base-instance-name ws-instance --size 2 --template $WS_TEMPLATE_NAME --zone $ZONE
     - name: Perform rolling update on MIG
       if: steps.mig_exists.outcome == 'success'
       run: gcloud compute instance-groups managed rolling-action start-update $WS_GROUP_NAME --version=template=$WS_TEMPLATE_NAME --zone $ZONE
