@@ -41,7 +41,7 @@ jobs:
       - name: Load env
         run: |
           gcloud secrets versions access latest --secret=novu-web > apps/web/.env
-          cd apps/web && pnpm envsetup
+          cd apps/web && pnpm envsetup && cd ../..
 
       - name: Build
         run: CI='' pnpm build:web
