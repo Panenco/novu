@@ -1,7 +1,7 @@
 version: '3'
 services:
   ws:
-    container_name: 'novu-ws'
+    image: 'novu-ws'
     build:
       dockerfile: 'apps/ws/Dockerfile'
       context: '../'
