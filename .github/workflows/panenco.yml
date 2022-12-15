@@ -1,90 +1,90 @@
-name: "Panenco"
+name: 'Panenco'
 
 on:
   push:
-    branches: [ "panenco" ]
+    branches: ['panenco']
 
 env:
   WS_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
   API_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api
   WS_TEMPLATE_NAME: ws-template-${{github.run_number}}
   WS_GROUP_NAME: ws-group
-  ZONE:  europe-west1-b
+  ZONE: europe-west1-b
 
 jobs:
   deploy_ws:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    # - name: Install pnpm
-    #   uses: pnpm/action-setup@v2.2.4
-    # - name: Install deps
-    #   run: cd apps/api && pnpm --filter novuhq install
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2.2.4
+      - name: Install deps
+        run: cd apps/api && pnpm --filter novuhq install
 
-    - name: Login
-      uses: 'google-github-actions/auth@v0'
-      with:
-        credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v0
+      - name: Login
+        uses: 'google-github-actions/auth@v0'
+        with:
+          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v0
 
-    - name: Set project
-      run: gcloud --quiet config set project ${{secrets.GOOGLE_PROJECT_ID}}
+      - name: Set project
+        run: gcloud --quiet config set project ${{secrets.GOOGLE_PROJECT_ID}}
 
-    - name: Docker google auth
-      run: gcloud auth configure-docker -q
+      - name: Docker google auth
+        run: gcloud auth configure-docker -q
 
-    # - name: Build API image
-    #   run: DOCKER_BUILDKIT=1 pnpm docker:build
+      - name: Build API image
+        run: DOCKER_BUILDKIT=1 pnpm docker:build
 
-    - name: Build image
-      run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
+      - name: Build image
+        run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
 
-    - name: Tag image
-      run: docker tag novu_ws $WS_IMAGE
-    - name: Push image
-      run: docker push $WS_IMAGE
+      - name: Tag image
+        run: docker tag novu_ws $WS_IMAGE
+      - name: Push image
+        run: docker push $WS_IMAGE
 
-    - name: Create env file
-      run: gcloud secrets versions access latest --secret=novu > .env.docker
+      - name: Create env file
+        run: gcloud secrets versions access latest --secret=novu > .env.docker
 
-    - name: Create instance template
-      run: >
-        gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME
-        --container-env-file .env.docker
-        --container-image $WS_IMAGE:latest 
-        --machine-type e2-micro
-        --tags=allow-health-check
+      - name: Create instance template
+        run: >
+          gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME
+          --container-env-file .env.docker
+          --container-image $WS_IMAGE:latest 
+          --machine-type e2-micro
+          --tags=allow-health-check
 
-    - name: Check if MIG exists
-      id: mig_exists
-      continue-on-error: true
-      run: > 
-        gcloud compute instance-groups managed describe $WS_GROUP_NAME
-        --zone $ZONE
+      - name: Check if MIG exists
+        id: mig_exists
+        continue-on-error: true
+        run: >
+          gcloud compute instance-groups managed describe $WS_GROUP_NAME
+          --zone $ZONE
 
-    - name: Create MIG
-      if: steps.mig_exists.outcome != 'success'
-      run: >
-        gcloud compute instance-groups managed create $WS_GROUP_NAME
-        --health-check ws-health-check
-        --base-instance-name ws-instance
-        --size 2
-        --template $WS_TEMPLATE_NAME
-        --zone $ZONE
+      - name: Create MIG
+        if: steps.mig_exists.outcome != 'success'
+        run: >
+          gcloud compute instance-groups managed create $WS_GROUP_NAME
+          --health-check ws-health-check
+          --base-instance-name ws-instance
+          --size 2
+          --template $WS_TEMPLATE_NAME
+          --zone $ZONE
 
-    - name: Set named ports on MIG
-      if: steps.mig_exists.outcome != 'success'
-      run: >
-        gcloud compute instance-groups set-named-ports $WS_GROUP_NAME
-        --named-ports=ws:3002 
-        --zone=$ZONE
+      - name: Set named ports on MIG
+        if: steps.mig_exists.outcome != 'success'
+        run: >
+          gcloud compute instance-groups set-named-ports $WS_GROUP_NAME
+          --named-ports=ws:3002 
+          --zone=$ZONE
 
-    - name: Perform rolling update on MIG
-      if: steps.mig_exists.outcome == 'success'
-      run: >
-        gcloud compute instance-groups managed rolling-action start-update $WS_GROUP_NAME
-        --version=template=$WS_TEMPLATE_NAME 
-        --zone $ZONE
+      - name: Perform rolling update on MIG
+        if: steps.mig_exists.outcome == 'success'
+        run: >
+          gcloud compute instance-groups managed rolling-action start-update $WS_GROUP_NAME
+          --version=template=$WS_TEMPLATE_NAME 
+          --zone $ZONE
