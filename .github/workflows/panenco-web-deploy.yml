@@ -1,0 +1,50 @@
+name: 'Panenco'
+
+on:
+  push:
+    branches: ['panenco']
+
+env:
+  BUCKET_NAME: novu-web
+
+jobs:
+  deploy_ws:
+    runs-on: ubuntu-latest
+    steps:
+      # ** 1. General Setup **
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Cache pnpm modules
+        uses: actions/cache@v2
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-
+
+      - uses: pnpm/action-setup@v2.0.1
+        with:
+          version: 7.5.0
+          run_install: true
+
+      - name: Login
+        uses: 'google-github-actions/auth@v0'
+        with:
+          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v0
+
+      - name: Set project
+        run: gcloud --quiet config set project ${{secrets.GOOGLE_PROJECT_ID}}
+
+      - name: Load env
+        run: |
+          gcloud secrets versions access latest --secret=novu-web > apps/web/.env
+          cd apps/web && pnpm envsetup
+
+      - name: Build
+        run: CI='' pnpm build:web
+
+      - name: Deploy Web
+        run: gcloud storage cp apps/web/build/* gs://$BUCKET_NAME/ --recursive
