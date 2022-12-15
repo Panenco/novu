@@ -51,7 +51,7 @@ jobs:
         run: docker tag novu-ws $WS_IMAGE
 
       - name: Push API image
-        run: docker push $WS_IMAGE
+        run: docker push $API_IMAGE
 
       - name: Push WS image
         run: docker push $WS_IMAGE
