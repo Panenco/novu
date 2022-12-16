@@ -14,7 +14,7 @@ env:
   ZONE: europe-west1-b
 
 jobs:
-  deploy_ws:
+  deploy-api-and-ws:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
