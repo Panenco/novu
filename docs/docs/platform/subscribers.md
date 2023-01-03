@@ -8,8 +8,8 @@ Novu manages your users in a specific subscribers data model, that allows the No
 
 A novu subscriber contains the following data points:
 
-- **User data** - Data stored in the subscriber object that you can easily access in your notification templates. This contains basic info such as name, gender, profile picture and etc...
-- **Contact information** - Things like e-mail, phone number, push tokens and etc... They will be used when a multi-channel template will be configured. Managing all communication credentials will reduce the amount of data you need to pass when triggering a notification.
+- **User data** - Data stored in the subscriber object that you can easily access in your notification templates. This contains basic info such as first name, last name, avatar, etc...
+- **Contact information** - Things like e-mail, phone number, push tokens, etc... They will be used when a multi-channel template will be configured. Managing all communication credentials will reduce the amount of data you need to pass when triggering a notification.
 
 ## Creating a subscriber
 
@@ -29,7 +29,7 @@ await novu.subscribers.identify(user.id, {
 });
 ```
 
-Novu will create a subscriber if one does not exist, and will update existing subscribers based on the `identify` payload. You can call this function during registration or signup to make sure the subscriber data is up to date.
+Novu will create a subscriber if one does not exist, and will update existing subscribers based on the `identify` payload. You can call this function during registration or signup to make sure the subscriber data is up-to-date.
 
 ### Subscriber identifier
 
@@ -83,3 +83,15 @@ await novu.subscribers.remove(user.id);
 ## Subscriber Preferences
 
 Novu manages a data model to help your users configure their preferences in an easy way. You can learn more about this in the [Subscriber Preferences](/platform/preferences) section.
+
+## Frequently Asked Questions
+
+<details>
+  <summary>How to store custom properties in subscriber</summary>
+  <p>Subscribers have fixed schema. Storing custom properties is not supported but here is a work around, you can store that property in your database and send those values in payload option of trigger using variables. Read more about variables <a href="./templates#variable-usage"> here </a>.</p>
+</details>
+
+<details>
+  <summary>How to get subscriber properties before step execution in workflow</summary>
+  <p>Workflow has access to all existing properties of subscriber as well as payload variables. So no extra steps are needed</p>
+</details>

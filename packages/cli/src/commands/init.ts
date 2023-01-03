@@ -1,6 +1,7 @@
 import * as open from 'open';
 import { Answers } from 'inquirer';
 import * as ora from 'ora';
+import { v4 as uuidv4 } from 'uuid';
 import { IEnvironment, ICreateNotificationTemplateDto, StepTypeEnum } from '@novu/shared';
 import { prompt } from '../client';
 import {
@@ -16,7 +17,7 @@ import {
   SERVER_HOST,
   REDIRECT_ROUTE,
   API_OAUTH_URL,
-  WIDGET_DEMO_ROUTH,
+  WIDGET_DEMO_ROUTE,
   API_TRIGGER_URL,
   CLIENT_LOGIN_URL,
   getServerPort,
@@ -34,11 +35,14 @@ import {
   createNotificationTemplates,
   getEnvironmentApiKeys,
 } from '../api';
-import { ConfigService } from '../services';
+import { AnalyticService, ConfigService, AnalyticsEventEnum, ANALYTICS_SOURCE } from '../services';
 
 export enum ChannelCTATypeEnum {
   REDIRECT = 'redirect',
 }
+
+const anonymousId = uuidv4();
+const analytics = new AnalyticService();
 
 export async function initCommand() {
   try {
@@ -50,14 +54,29 @@ export async function initCommand() {
     }
 
     const existingEnvironment = await checkExistingEnvironment(config);
+    const isSessionExists = config.getDecodedToken();
+
+    analytics.track({
+      event: AnalyticsEventEnum.CLI_LAUNCHED,
+      identity: { anonymousId: isSessionExists ? undefined : anonymousId, userId: isSessionExists?._id },
+      data: {
+        existingEnvironment: !!existingEnvironment,
+      },
+    });
+
     if (existingEnvironment) {
       const { result } = await prompt(existingSessionQuestions(existingEnvironment));
+      const user = config.getDecodedToken();
+
+      analytics.identify(user);
+      analytics.alias({ previousId: anonymousId, userId: user._id });
 
       if (result === 'visitDashboard') {
         await handleExistingSession(result, config);
 
         return;
       }
+      await analytics.flush();
       process.exit();
     }
 
@@ -78,18 +97,51 @@ async function handleOnboardingFlow(config: ConfigService) {
   try {
     const answers = await prompt(introQuestions);
 
+    analytics.track({
+      identity: { anonymousId },
+      event: AnalyticsEventEnum.CREATE_APP_QUESTION_EVENT,
+    });
+
     const envAnswer = await prompt(environmentQuestions);
+
+    analytics.track({
+      identity: { anonymousId },
+      event: AnalyticsEventEnum.ENVIRONMENT_SELECT_EVENT,
+      data: {
+        environment: envAnswer.env,
+      },
+    });
+
     if (envAnswer.env === 'self-hosted-docker') {
       await open(GITHUB_DOCKER_URL);
+      await analytics.flush();
 
       return;
     }
 
     const regMethod = await prompt(registerMethodQuestions);
 
+    analytics.track({
+      identity: { anonymousId },
+      event: AnalyticsEventEnum.REGISTER_METHOD_SELECT_EVENT,
+      data: {
+        environment: regMethod.value,
+      },
+    });
+
     if (regMethod.value === 'github') {
       const { accept } = await prompt(termAndPrivacyQuestions);
+
+      analytics.track({
+        identity: { anonymousId },
+        event: AnalyticsEventEnum.TERMS_AND_CONDITIONS_QUESTION,
+        data: {
+          accepted: accept,
+        },
+      });
+
       if (accept === false) {
+        await analytics.flush();
         process.exit();
       }
 
@@ -104,6 +156,19 @@ async function handleOnboardingFlow(config: ConfigService) {
     const applicationIdentifier = await createEnvironmentHandler(config, answers);
 
     const address = httpServer.getAddress();
+
+    const user = config.getDecodedToken();
+
+    analytics.identify(user);
+    analytics.alias({ previousId: anonymousId, userId: user._id });
+
+    analytics.track({
+      identity: { userId: user._id },
+      event: AnalyticsEventEnum.ACCOUNT_CREATED,
+      data: {
+        method: regMethod.value,
+      },
+    });
 
     spinner.succeed(`Created your account successfully. 
     
@@ -177,11 +242,19 @@ async function raiseDemoDashboard(httpServer: HttpServer, config: ConfigService,
 
   storeDashboardData(config, createNotificationTemplatesResponse, decodedToken, applicationIdentifier);
 
+  analytics.track({
+    identity: { userId: config.getDecodedToken()._id },
+    event: AnalyticsEventEnum.OPEN_DASHBOARD,
+    data: {
+      existingUser: false,
+    },
+  });
+
   httpServer.redirectSuccessDashboard(demoDashboardUrl);
 }
 
 function buildTemplate(notificationGroupId: string): ICreateNotificationTemplateDto {
-  const redirectUrl = `${CLIENT_LOGIN_URL}?token={{token}}&source=cli`;
+  const redirectUrl = `${CLIENT_LOGIN_URL}?token={{token}}&source=cli&source_widget=notification`;
 
   const steps = [
     {
@@ -211,7 +284,7 @@ function buildTemplate(notificationGroupId: string): ICreateNotificationTemplate
 }
 
 async function getDemoDashboardUrl() {
-  return `http://${SERVER_HOST}:${await getServerPort()}${WIDGET_DEMO_ROUTH}`;
+  return `http://${SERVER_HOST}:${await getServerPort()}${WIDGET_DEMO_ROUTE}`;
 }
 
 function storeDashboardData(
@@ -221,7 +294,7 @@ function storeDashboardData(
   applicationIdentifier: string
 ) {
   const dashboardURL = `${CLIENT_LOGIN_URL}?token=${config.getToken()}&source=cli`;
-
+  const analyticsSource = `${ANALYTICS_SOURCE}-(UI)`;
   const tmpPayload: { key: string; value: string }[] = [
     { key: 'embedPath', value: EMBED_PATH },
     { key: 'url', value: API_TRIGGER_URL },
@@ -234,6 +307,10 @@ function storeDashboardData(
     { key: 'environmentId', value: applicationIdentifier },
     { key: 'token', value: config.getToken() },
     { key: 'dashboardURL', value: dashboardURL },
+    { key: 'skipTutorial', value: `${AnalyticsEventEnum.SKIP_TUTORIAL} - ${analyticsSource}` },
+    { key: 'dashboardOpen', value: `${AnalyticsEventEnum.DASHBOARD_PAGE_OPENED} - ${analyticsSource}` },
+    { key: 'copySnippet', value: `${AnalyticsEventEnum.COPY_SNIPPET} - ${analyticsSource}` },
+    { key: 'triggerButton', value: `${AnalyticsEventEnum.TRIGGER_BUTTON} - ${analyticsSource}` },
   ];
 
   config.setValue('triggerPayload', JSON.stringify(tmpPayload));
@@ -286,10 +363,23 @@ async function checkExistingEnvironment(config: ConfigService): Promise<IEnviron
 
 async function handleExistingSession(result: string, config: ConfigService) {
   if (result === 'visitDashboard') {
+    analytics.track({
+      identity: { userId: config.getDecodedToken()._id },
+      event: AnalyticsEventEnum.OPEN_DASHBOARD,
+      data: {
+        existingUser: true,
+      },
+    });
+
     const dashboardURL = `${CLIENT_LOGIN_URL}?token=${config.getToken()}&source=cli`;
 
     await open(dashboardURL);
   } else if (result === 'exit') {
+    analytics.track({
+      identity: { userId: config.getDecodedToken()._id },
+      event: AnalyticsEventEnum.EXIT_EXISTING_SESSION,
+    });
+    await analytics.flush();
     process.exit();
   }
 }

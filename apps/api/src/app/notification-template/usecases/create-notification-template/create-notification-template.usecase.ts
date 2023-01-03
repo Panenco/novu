@@ -39,7 +39,8 @@ export class CreateNotificationTemplate {
       identifier: `${triggerIdentifier}${!templateCheckIdentifier ? '' : '-' + shortid.generate()}`,
       variables: variables.map((i) => {
         return {
-          name: i,
+          name: i.name,
+          type: i.type,
         };
       }),
       subscriberVariables: subscriberVariables.map((i) => {
@@ -67,7 +68,9 @@ export class CreateNotificationTemplate {
           subject: message.template.subject,
           title: message.template.title,
           feedId: message.template.feedId,
+          preheader: message.template.preheader,
           parentChangeId,
+          actor: message.template.actor,
         })
       );
 
@@ -78,6 +81,8 @@ export class CreateNotificationTemplate {
         filters: message.filters,
         _parentId: parentStepId,
         metadata: message.metadata,
+        active: message.active,
+        shouldStopOnFail: message.shouldStopOnFail,
       });
       parentStepId = stepId;
     }
@@ -98,7 +103,7 @@ export class CreateNotificationTemplate {
       _notificationGroupId: command.notificationGroupId,
     });
 
-    const item = await this.notificationTemplateRepository.findById(savedTemplate._id, command.organizationId);
+    const item = await this.notificationTemplateRepository.findById(savedTemplate._id, command.environmentId);
 
     await this.createChange.execute(
       CreateChangeCommand.create({
@@ -111,11 +116,13 @@ export class CreateNotificationTemplate {
       })
     );
 
-    this.analyticsService.track('Create Notification Template - [Platform]', command.userId, {
-      _organization: command.organizationId,
-      steps: command.steps?.length,
-      channels: command.steps?.map((i) => i.template.type),
-    });
+    if (command.name !== 'On-boarding notification') {
+      this.analyticsService.track('Create Notification Template - [Platform]', command.userId, {
+        _organization: command.organizationId,
+        steps: command.steps?.length,
+        channels: command.steps?.map((i) => i.template.type),
+      });
+    }
 
     return item;
   }

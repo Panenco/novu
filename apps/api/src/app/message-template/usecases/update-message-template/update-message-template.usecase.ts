@@ -23,6 +23,9 @@ export class UpdateMessageTemplate {
     if (!existingTemplate) throw new NotFoundException(`Message template with id ${command.templateId} not found`);
 
     const updatePayload: Partial<MessageTemplateEntity> = {};
+
+    const unsetPayload: Partial<Record<keyof MessageTemplateEntity, string>> = {};
+
     if (command.name) {
       updatePayload.name = command.name;
     }
@@ -41,16 +44,12 @@ export class UpdateMessageTemplate {
     }
 
     if (command.cta) {
-      if (command.cta.type) {
-        updatePayload['cta.type'] = command.cta.type;
-      }
-      if (command.cta.data?.url) {
-        updatePayload['cta.data.url'] = command.cta.data.url;
-      }
-      if (command.cta.action) {
-        updatePayload['cta.action.status'] = command.cta.action.status;
-        updatePayload['cta.action.buttons'] = command.cta.action.buttons;
-      }
+      updatePayload.cta = {
+        ...(existingTemplate.cta && { cta: existingTemplate.cta }),
+        ...command.cta,
+      };
+    } else if (existingTemplate.cta) {
+      unsetPayload.cta = '';
     }
 
     if (command.feedId) {
@@ -68,6 +67,14 @@ export class UpdateMessageTemplate {
       updatePayload.title = command.title;
     }
 
+    if (command.preheader !== undefined || command.preheader !== null) {
+      updatePayload.preheader = command.preheader;
+    }
+
+    if (command.actor) {
+      updatePayload.actor = command.actor;
+    }
+
     if (!Object.keys(updatePayload).length) {
       throw new BadRequestException('No properties found for update');
     }
@@ -79,16 +86,25 @@ export class UpdateMessageTemplate {
       },
       {
         $set: updatePayload,
+        $unset: unsetPayload,
       }
     );
 
     const item = await this.messageTemplateRepository.findById(command.templateId);
 
     if (command.feedId || (!command.feedId && existingTemplate._feedId)) {
-      await this.messageRepository.updateFeedByMessageTemplateId(command.templateId, command.feedId);
+      await this.messageRepository.updateFeedByMessageTemplateId(
+        command.environmentId,
+        command.templateId,
+        command.feedId
+      );
     }
 
-    const changeId = await this.changeRepository.getChangeId(ChangeEntityTypeEnum.MESSAGE_TEMPLATE, item._id);
+    const changeId = await this.changeRepository.getChangeId(
+      command.environmentId,
+      ChangeEntityTypeEnum.MESSAGE_TEMPLATE,
+      item._id
+    );
 
     await this.createChange.execute(
       CreateChangeCommand.create({

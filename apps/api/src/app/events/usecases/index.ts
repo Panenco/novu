@@ -22,8 +22,12 @@ import { AddDigestJob } from './add-job/add-digest-job.usecase';
 import { AddDelayJob } from './add-job/add-delay-job.usecase';
 import { ShouldAddDigestJob } from './add-job/should-add-digest-job.usecase';
 import { SendMessageDelay } from './send-message/send-message-delay.usecase';
+import { SendTestEmail } from './send-message/test-send-email.usecase';
+import { MapTriggerRecipients, MapTriggerRecipientsCommand } from './map-trigger-recipients';
+import { MessageMatcher } from './trigger-event/message-matcher.service';
 
 export const USE_CASES = [
+  MessageMatcher,
   TriggerEvent,
   ProcessSubscriber,
   SendMessage,
@@ -48,4 +52,7 @@ export const USE_CASES = [
   AddDelayJob,
   ShouldAddDigestJob,
   SendMessageDelay,
+  SendTestEmail,
+  MapTriggerRecipients,
+  MapTriggerRecipientsCommand,
 ];

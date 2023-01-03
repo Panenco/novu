@@ -18,7 +18,7 @@ const notificationTemplateSchema = new Schema(
     },
     critical: {
       type: Schema.Types.Boolean,
-      default: true,
+      default: false,
     },
     _notificationGroupId: {
       type: Schema.Types.ObjectId,
@@ -34,6 +34,9 @@ const notificationTemplateSchema = new Schema(
         variables: [
           {
             name: Schema.Types.String,
+            type: {
+              type: Schema.Types.String,
+            },
           },
         ],
         subscriberVariables: [
@@ -49,6 +52,10 @@ const notificationTemplateSchema = new Schema(
           type: Schema.Types.Boolean,
           default: true,
         },
+        shouldStopOnFail: {
+          type: Schema.Types.Boolean,
+          default: false,
+        },
         filters: [
           {
             isNegated: Schema.Types.Boolean,
@@ -62,6 +69,7 @@ const notificationTemplateSchema = new Schema(
                 value: Schema.Types.String,
                 operator: Schema.Types.String,
                 on: Schema.Types.String,
+                webhookUrl: Schema.Types.String,
               },
             ],
           },

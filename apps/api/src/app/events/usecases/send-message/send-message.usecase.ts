@@ -1,6 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
-  ChannelTypeEnum,
   ExecutionDetailsSourceEnum,
   ExecutionDetailsStatusEnum,
   IPreferenceChannels,
@@ -13,13 +12,13 @@ import { SendMessageInApp } from './send-message-in-app.usecase';
 import { SendMessageChat } from './send-message-chat.usecase';
 import { SendMessagePush } from './send-message-push.usecase';
 import { Digest } from './digest/digest.usecase';
-import { matchMessageWithFilters } from '../trigger-event/message-filter.matcher';
 import {
   JobEntity,
   SubscriberRepository,
   NotificationTemplateRepository,
   JobRepository,
   JobStatusEnum,
+  EnvironmentRepository,
 } from '@novu/dal';
 import { CreateExecutionDetails } from '../../../execution-details/usecases/create-execution-details/create-execution-details.usecase';
 import { SendMessageDelay } from './send-message-delay.usecase';
@@ -31,6 +30,11 @@ import {
   GetSubscriberTemplatePreference,
   GetSubscriberTemplatePreferenceCommand,
 } from '../../../subscribers/usecases/get-subscriber-template-preference';
+import { AnalyticsService } from '../../../shared/services/analytics/analytics.service';
+import { ANALYTICS_SERVICE } from '../../../shared/shared.module';
+import { Cached } from '../../../shared/interceptors';
+import { CacheKeyPrefixEnum } from '../../../shared/services/cache';
+import { MessageMatcher } from '../trigger-event/message-matcher.service';
 
 @Injectable()
 export class SendMessage {
@@ -46,7 +50,10 @@ export class SendMessage {
     private getSubscriberTemplatePreferenceUsecase: GetSubscriberTemplatePreference,
     private notificationTemplateRepository: NotificationTemplateRepository,
     private jobRepository: JobRepository,
-    private sendMessageDelay: SendMessageDelay
+    private sendMessageDelay: SendMessageDelay,
+    private environmentRepository: EnvironmentRepository,
+    private matchMessage: MessageMatcher,
+    @Inject(ANALYTICS_SERVICE) private analyticsService: AnalyticsService
   ) {}
 
   public async execute(command: SendMessageCommand) {
@@ -54,7 +61,7 @@ export class SendMessage {
     const preferred = await this.filterPreferredChannels(command.job);
 
     if (!shouldRun || !preferred) {
-      await this.jobRepository.updateStatus(command.jobId, JobStatusEnum.CANCELED);
+      await this.jobRepository.updateStatus(command.organizationId, command.jobId, JobStatusEnum.CANCELED);
 
       return;
     }
@@ -71,6 +78,21 @@ export class SendMessage {
           isRetry: false,
         })
       );
+    }
+
+    if (!command.payload?.$on_boarding_trigger) {
+      this.analyticsService.track('Process Workflow Step - [Triggers]', command.userId, {
+        _template: command.job._templateId,
+        _organization: command.organizationId,
+        _subscriber: command.job?._subscriberId,
+        provider: command.job?.providerId,
+        delay: command.job?.delay,
+        jobType: command.job?.type,
+        digestType: command.job.digest?.type,
+        digestEventsCount: command.job.digest?.events?.length,
+        digestUnit: command.job.digest?.unit,
+        digestAmount: command.job.digest?.amount,
+      });
     }
 
     switch (command.step.template.type) {
@@ -94,7 +116,12 @@ export class SendMessage {
   private async filter(command: SendMessageCommand) {
     const data = await this.getFilterData(command);
 
-    const shouldRun = matchMessageWithFilters(command.step, data);
+    const configuration = {
+      job: command.job,
+      command,
+    };
+
+    const shouldRun = await this.matchMessage.filter(command.step, data, configuration);
 
     if (!shouldRun) {
       await this.createExecutionDetails.execute(
@@ -121,7 +148,7 @@ export class SendMessage {
       return filter?.children?.find((item) => item?.on === 'subscriber');
     });
 
-    let subscriber = undefined;
+    let subscriber;
 
     if (fetchSubscriber) {
       /// TODO: refactor command.subscriberId to command._subscriberId
@@ -135,7 +162,11 @@ export class SendMessage {
   }
 
   private async filterPreferredChannels(job: JobEntity): Promise<boolean> {
-    const template = await this.notificationTemplateRepository.findById(job._templateId, job._organizationId);
+    const template = await this.getNotificationTemplate({
+      _id: job._templateId,
+      environmentId: job._environmentId,
+    });
+
     const buildCommand = GetSubscriberTemplatePreferenceCommand.create({
       organizationId: job._organizationId,
       subscriberId: job._subscriberId,
@@ -147,7 +178,7 @@ export class SendMessage {
 
     const result = this.isActionStep(job) || this.stepPreferred(preference, job);
 
-    if (!result) {
+    if (!result && !template.critical) {
       await this.createExecutionDetails.execute(
         CreateExecutionDetailsCommand.create({
           ...CreateExecutionDetailsCommand.getDetailsFromJob(job),
@@ -161,7 +192,12 @@ export class SendMessage {
       );
     }
 
-    return result;
+    return result || template.critical;
+  }
+
+  @Cached(CacheKeyPrefixEnum.NOTIFICATION_TEMPLATE)
+  private async getNotificationTemplate({ _id, environmentId }: { _id: string; environmentId: string }) {
+    return await this.notificationTemplateRepository.findById(_id, environmentId);
   }
 
   private stepPreferred(preference: { enabled: boolean; channels: IPreferenceChannels }, job: JobEntity) {

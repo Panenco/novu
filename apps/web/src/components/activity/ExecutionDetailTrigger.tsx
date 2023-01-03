@@ -1,5 +1,5 @@
 import { INotificationTrigger, TriggerTypeEnum } from '@novu/shared';
-import styled from 'styled-components';
+import styled from '@emotion/styled';
 
 import { Text } from '../../design-system';
 import { getCurlTriggerSnippet } from '../templates/TriggerSnippetTabs';
@@ -36,7 +36,7 @@ const buildTrigger = (identifier, subscriberVariables, payload): INotificationTr
 export const ExecutionDetailTrigger = ({ identifier, step, subscriberVariables }) => {
   const { payload } = step || {};
   const trigger = buildTrigger(identifier, subscriberVariables, payload);
-  const curlSnippet = getCurlTriggerSnippet(identifier, trigger.variables, trigger.subscriberVariables);
+  const curlSnippet = getCurlTriggerSnippet(identifier, trigger.variables, trigger.subscriberVariables || []);
 
   return (
     <>

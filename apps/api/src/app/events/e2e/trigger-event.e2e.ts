@@ -13,9 +13,16 @@ import {
 import { UserSession, SubscribersService } from '@novu/testing';
 
 import { expect } from 'chai';
-import { ChannelTypeEnum, StepTypeEnum, IEmailBlock, TemplateVariableTypeEnum } from '@novu/shared';
+import {
+  ChannelTypeEnum,
+  StepTypeEnum,
+  IEmailBlock,
+  TemplateVariableTypeEnum,
+  EmailProviderIdEnum,
+} from '@novu/shared';
 import axios from 'axios';
 import { ISubscribersDefine } from '@novu/node';
+import * as sinon from 'sinon';
 
 const axiosInstance = axios.create();
 
@@ -150,7 +157,7 @@ describe('Trigger event - /v1/events/trigger (POST)', function () {
       }
     );
 
-    let jobs: JobEntity[] = await jobRepository.find({});
+    let jobs: JobEntity[] = await jobRepository.find({ _environmentId: session.environment._id });
     let statuses: JobStatusEnum[] = jobs.map((job) => job.status);
 
     expect(statuses.includes(JobStatusEnum.RUNNING)).true;
@@ -158,9 +165,7 @@ describe('Trigger event - /v1/events/trigger (POST)', function () {
 
     await session.awaitRunningJobs(template._id);
 
-    jobs = await jobRepository.find({
-      _templateId: template._id,
-    });
+    jobs = await jobRepository.find({ _environmentId: session.environment._id, _templateId: template._id });
     statuses = jobs.map((job) => job.status).filter((value) => value !== JobStatusEnum.COMPLETED);
 
     expect(statuses.length).to.equal(0);
@@ -200,7 +205,7 @@ describe('Trigger event - /v1/events/trigger (POST)', function () {
             },
             {
               name: 'text2.txt',
-              file: new Buffer('hello world!', 'utf-8'),
+              file: Buffer.from('hello world!', 'utf-8'),
             },
           ],
         },
@@ -488,9 +493,7 @@ describe('Trigger event - /v1/events/trigger (POST)', function () {
     });
 
     await integrationRepository.update(
-      {
-        _id: integration._id,
-      },
+      { _environmentId: session.environment._id, _id: integration._id },
       { active: false }
     );
 
@@ -532,6 +535,73 @@ describe('Trigger event - /v1/events/trigger (POST)', function () {
     });
 
     expect(message).to.be.null;
+  });
+
+  it('should trigger message with active integration', async function () {
+    const newSubscriberIdInAppNotification = SubscriberRepository.createObjectId();
+    const channelType = ChannelTypeEnum.EMAIL;
+
+    template = await createTemplate(session, channelType);
+
+    template = await session.createTemplate({
+      steps: [
+        {
+          name: 'Message Name',
+          subject: 'Test email {{nested.subject}}',
+          type: StepTypeEnum.EMAIL,
+          content: [],
+        },
+      ],
+    });
+
+    await sendTrigger(session, template, newSubscriberIdInAppNotification, {
+      nested: {
+        subject: 'a subject nested',
+      },
+    });
+
+    await session.awaitRunningJobs(template._id);
+
+    const createdSubscriber = await subscriberRepository.findBySubscriberId(
+      session.environment._id,
+      newSubscriberIdInAppNotification
+    );
+
+    let messages = await messageRepository.find({
+      _environmentId: session.environment._id,
+      _subscriberId: createdSubscriber._id,
+      channel: channelType,
+    });
+
+    expect(messages.length).to.be.equal(1);
+    expect(messages[0].providerId).to.be.equal(EmailProviderIdEnum.SendGrid);
+
+    const payload = {
+      providerId: 'mailgun',
+      channel: 'email',
+      credentials: { apiKey: '123', secretKey: 'abc' },
+      active: true,
+      check: false,
+    };
+
+    await session.testAgent.post('/v1/integrations').send(payload);
+
+    await sendTrigger(session, template, newSubscriberIdInAppNotification, {
+      nested: {
+        subject: 'a subject nested',
+      },
+    });
+
+    await session.awaitRunningJobs(template._id);
+
+    messages = await messageRepository.find({
+      _environmentId: session.environment._id,
+      _subscriberId: createdSubscriber._id,
+      channel: channelType,
+    });
+
+    expect(messages.length).to.be.equal(2);
+    expect(messages[1].providerId).to.be.equal(EmailProviderIdEnum.Mailgun);
   });
 
   it('should fail to trigger with missing variables', async function () {
@@ -667,6 +737,29 @@ describe('Trigger event - /v1/events/trigger (POST)', function () {
     expect(block.content).to.equal('Hello John Doe, Welcome to Umbrella Corp');
   });
 
+  it('should handle empty workflow scenario', async function () {
+    template = await session.createTemplate({
+      steps: [],
+    });
+
+    const response = await session.testAgent
+      .post(`/v1/events/trigger`)
+      .send({
+        name: template.triggers[0].identifier,
+        to: subscriber.subscriberId,
+        payload: {
+          myUser: {
+            lastName: 'Test',
+          },
+        },
+      })
+      .expect(201);
+
+    const { status, acknowledged } = response.body.data;
+    expect(status).to.equal('no_workflow_steps_defined');
+    expect(acknowledged).to.equal(true);
+  });
+
   it('should trigger with given required variables', async function () {
     template = await session.createTemplate({
       steps: [
@@ -743,6 +836,7 @@ describe('Trigger event - /v1/events/trigger (POST)', function () {
       _environmentId: session.environment._id,
       channel: channelType,
     });
+
     expect(messages.length).to.equal(4);
     const isUnique = (value, index, self) => self.indexOf(value) === index;
     const subscriberIds = messages.map((message) => message._subscriberId).filter(isUnique);
@@ -842,10 +936,283 @@ describe('Trigger event - /v1/events/trigger (POST)', function () {
     await session.awaitRunningJobs(template._id);
 
     const messages = await messageRepository.count({
+      _environmentId: session.environment._id,
       _templateId: template._id,
     });
 
     expect(messages).to.equal(1);
+  });
+
+  it('should filter a message based on webhook filter', async function () {
+    template = await session.createTemplate({
+      steps: [
+        {
+          type: StepTypeEnum.EMAIL,
+          subject: 'Password reset',
+          content: [
+            {
+              type: 'text',
+              content: 'This are the text contents of the template for {{firstName}}',
+            },
+            {
+              type: 'button',
+              content: 'SIGN UP',
+              url: 'https://url-of-app.com/{{urlVariable}}',
+            },
+          ],
+          filters: [
+            {
+              isNegated: false,
+              type: 'GROUP',
+              value: 'AND',
+              children: [
+                {
+                  field: 'isOnline',
+                  value: 'true',
+                  operator: 'EQUAL',
+                  on: 'webhook',
+                  webhookUrl: 'www.user.com/webhook',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    let axiosPostStub = sinon.stub(axios, 'post').resolves(
+      Promise.resolve({
+        data: { isOnline: true },
+      })
+    );
+
+    await axiosInstance.post(
+      `${session.serverUrl}/v1/events/trigger`,
+      {
+        name: template.triggers[0].identifier,
+        to: subscriber.subscriberId,
+        payload: {},
+      },
+      {
+        headers: {
+          authorization: `ApiKey ${session.apiKey}`,
+        },
+      }
+    );
+
+    await session.awaitRunningJobs(template._id);
+
+    let messages = await messageRepository.count({
+      _environmentId: session.environment._id,
+      _templateId: template._id,
+    });
+
+    expect(messages).to.equal(1);
+
+    axiosPostStub.restore();
+    axiosPostStub = sinon.stub(axios, 'post').resolves(
+      Promise.resolve({
+        data: { isOnline: false },
+      })
+    );
+
+    await axiosInstance.post(
+      `${session.serverUrl}/v1/events/trigger`,
+      {
+        name: template.triggers[0].identifier,
+        to: subscriber.subscriberId,
+        payload: {},
+      },
+      {
+        headers: {
+          authorization: `ApiKey ${session.apiKey}`,
+        },
+      }
+    );
+
+    await session.awaitRunningJobs(template._id);
+
+    messages = await messageRepository.count({
+      _environmentId: session.environment._id,
+      _templateId: template._id,
+    });
+
+    expect(messages).to.equal(1);
+    axiosPostStub.restore();
+  });
+
+  it('should throw exception on webhook filter - demo unavailable server', async function () {
+    template = await session.createTemplate({
+      steps: [
+        {
+          type: StepTypeEnum.EMAIL,
+          subject: 'Password reset',
+          content: [
+            {
+              type: 'text',
+              content: 'This are the text contents of the template for {{firstName}}',
+            },
+            {
+              type: 'button',
+              content: 'SIGN UP',
+              url: 'https://url-of-app.com/{{urlVariable}}',
+            },
+          ],
+          filters: [
+            {
+              isNegated: false,
+              type: 'GROUP',
+              value: 'AND',
+              children: [
+                {
+                  field: 'isOnline',
+                  value: 'true',
+                  operator: 'EQUAL',
+                  on: 'webhook',
+                  webhookUrl: 'www.user.com/webhook',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const axiosPostStub = sinon.stub(axios, 'post').throws(new Error('Users remote error'));
+
+    await axiosInstance.post(
+      `${session.serverUrl}/v1/events/trigger`,
+      {
+        name: template.triggers[0].identifier,
+        to: subscriber.subscriberId,
+        payload: {},
+      },
+      {
+        headers: {
+          authorization: `ApiKey ${session.apiKey}`,
+        },
+      }
+    );
+
+    await session.awaitRunningJobs(template._id);
+
+    const messages = await messageRepository.count({
+      _environmentId: session.environment._id,
+      _templateId: template._id,
+    });
+
+    expect(messages).to.equal(0);
+    axiosPostStub.restore();
+  });
+
+  it('should backoff on exception while webhook filter (original request + 2 retries)', async function () {
+    template = await session.createTemplate({
+      steps: [
+        {
+          type: StepTypeEnum.EMAIL,
+          subject: 'Password reset',
+          content: [
+            {
+              type: 'text',
+              content: 'This are the text contents of the template for {{firstName}}',
+            },
+            {
+              type: 'button',
+              content: 'SIGN UP',
+              url: 'https://url-of-app.com/{{urlVariable}}',
+            },
+          ],
+          filters: [
+            {
+              isNegated: false,
+              type: 'GROUP',
+              value: 'AND',
+              children: [
+                {
+                  field: 'isOnline',
+                  value: 'true',
+                  operator: 'EQUAL',
+                  on: 'webhook',
+                  webhookUrl: 'www.user.com/webhook',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    let axiosPostStub = sinon.stub(axios, 'post');
+
+    axiosPostStub
+      .onCall(0)
+      .throws(new Error('Users remote error'))
+      .onCall(1)
+      .resolves({
+        data: { isOnline: true },
+      });
+
+    await axiosInstance.post(
+      `${session.serverUrl}/v1/events/trigger`,
+      {
+        name: template.triggers[0].identifier,
+        to: subscriber.subscriberId,
+        payload: {},
+      },
+      {
+        headers: {
+          authorization: `ApiKey ${session.apiKey}`,
+        },
+      }
+    );
+
+    await session.awaitRunningJobs(template._id);
+
+    let messages = await messageRepository.count({
+      _environmentId: session.environment._id,
+      _templateId: template._id,
+    });
+
+    expect(messages).to.equal(1);
+
+    axiosPostStub.restore();
+    axiosPostStub = sinon
+      .stub(axios, 'post')
+      .onCall(0)
+      .throws(new Error('Users remote error'))
+      .onCall(1)
+      .throws(new Error('Users remote error'))
+      .onCall(2)
+      .throws(new Error('Users remote error'))
+      .resolves(
+        Promise.resolve({
+          data: { isOnline: true },
+        })
+      );
+
+    await axiosInstance.post(
+      `${session.serverUrl}/v1/events/trigger`,
+      {
+        name: template.triggers[0].identifier,
+        to: subscriber.subscriberId,
+        payload: {},
+      },
+      {
+        headers: {
+          authorization: `ApiKey ${session.apiKey}`,
+        },
+      }
+    );
+
+    await session.awaitRunningJobs(template._id);
+
+    messages = await messageRepository.count({
+      _environmentId: session.environment._id,
+      _templateId: template._id,
+    });
+
+    expect(messages).to.equal(1);
+    axiosPostStub.restore();
   });
 });
 

@@ -1,12 +1,14 @@
 import { useEffect, useCallback, useState } from 'react';
-import { IJwtPayload, IOrganizationEntity, IUserEntity } from '@novu/shared';
 import axios from 'axios';
 import jwtDecode from 'jwt-decode';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from 'react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
+import type { IJwtPayload, IOrganizationEntity, IUserEntity } from '@novu/shared';
+
 import { getUser } from '../api/user';
 import { getOrganizations } from '../api/organization';
+import { useSegment } from '../hooks/use-segment';
 
 export function applyToken(token: string | null) {
   if (token) {
@@ -30,6 +32,7 @@ export function getToken(): string {
 }
 
 export function useAuthController() {
+  const segment = useSegment();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [token, setToken] = useState<string | null>(() => {
@@ -38,15 +41,20 @@ export function useAuthController() {
 
     return initialToken;
   });
-  const [jwtPayload, setJwtPayload] = useState<IJwtPayload>();
+  const [jwtPayload, setJwtPayload] = useState<IJwtPayload | undefined>(() => {
+    const initialToken = getToken();
+    if (initialToken) {
+      return jwtDecode<IJwtPayload>(initialToken);
+    }
+  });
   const [organization, setOrganization] = useState<IOrganizationEntity>();
   const isLoggedIn = !!token;
 
-  const { data: user } = useQuery<IUserEntity>('/v1/users/me', getUser, {
+  const { data: user } = useQuery<IUserEntity>(['/v1/users/me'], getUser, {
     enabled: Boolean(isLoggedIn && axios.defaults.headers.common.Authorization),
   });
 
-  const { data: organizations } = useQuery<IOrganizationEntity[]>('/v1/organizations', getOrganizations, {
+  const { data: organizations } = useQuery<IOrganizationEntity[]>(['/v1/organizations'], getOrganizations, {
     enabled: Boolean(
       isLoggedIn &&
         axios.defaults.headers.common.Authorization &&
@@ -62,20 +70,9 @@ export function useAuthController() {
   }, [jwtPayload, organizations]);
 
   useEffect(() => {
-    if (token) {
-      queryClient.removeQueries({
-        predicate: (query) =>
-          query.queryKey !== '/v1/users/me' &&
-          query.queryKey !== '/v1/environments' &&
-          query.queryKey !== '/v1/organizations',
-      });
-      const payload = jwtDecode<IJwtPayload>(token);
-      setJwtPayload(payload);
-    }
-  }, [token]);
-
-  useEffect(() => {
     if (user && organization) {
+      segment.identify(user);
+
       Sentry.setUser({
         email: user.email,
         username: `${user.firstName} ${user.lastName}`,
@@ -88,18 +85,34 @@ export function useAuthController() {
     }
   }, [user, organization]);
 
-  const setTokenCallback = useCallback((newToken: string | null) => {
-    /**
-     * applyToken needs to be called first to avoid a race condition
-     */
-    applyToken(newToken);
-    setToken(newToken);
-  }, []);
+  const setTokenCallback = useCallback(
+    (newToken: string | null) => {
+      /**
+       * applyToken needs to be called first to avoid a race condition
+       */
+      applyToken(newToken);
+      setToken(newToken);
+
+      if (newToken) {
+        queryClient.refetchQueries({
+          predicate: (query) =>
+            // !query.isFetching &&
+            !query.queryKey.includes('/v1/users/me') &&
+            !query.queryKey.includes('/v1/environments') &&
+            !query.queryKey.includes('/v1/organizations'),
+        });
+        const payload = jwtDecode<IJwtPayload>(newToken);
+        setJwtPayload(payload);
+      }
+    },
+    [queryClient, setToken, setJwtPayload]
+  );
 
   const logout = () => {
     setTokenCallback(null);
     queryClient.clear();
     navigate('/auth/login');
+    segment.reset();
   };
 
   return {

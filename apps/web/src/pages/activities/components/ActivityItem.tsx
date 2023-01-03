@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createStyles, CSSObject, Grid, MantineTheme, Text, UnstyledButton, useMantineTheme } from '@mantine/core';
 import { JobStatusEnum } from '@novu/shared';
 import { format } from 'date-fns';
-import styled from 'styled-components';
+import styled from '@emotion/styled';
 
 import { ActivityStep } from './ActivityStep';
 import { DigestedStep } from './DigestedStep';
@@ -94,7 +94,7 @@ export const ActivityItem = ({ item, onClick }) => {
                     }}
                     data-test-id="row-template-name"
                   >
-                    {item?.template?.name}
+                    {item?.template?.name ? item.template.name : 'Deleted Template'}
                   </h3>
                   <When truthy={isOld}>
                     <Text>Done</Text>
@@ -120,7 +120,12 @@ export const ActivityItem = ({ item, onClick }) => {
               </small>
               <div data-test-id="subscriber-id">
                 <small>
-                  <b>Subscriber id:</b> {item.subscriber.id}
+                  <b>Subscriber id:</b> {item?.subscriber?.id ? item.subscriber.id : 'Deleted Subscriber'}
+                </small>
+              </div>
+              <div data-test-id="transaction-id">
+                <small>
+                  <b>Transaction id:</b> {item.transactionId}
                 </small>
               </div>
             </div>
