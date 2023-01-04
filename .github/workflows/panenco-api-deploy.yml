@@ -6,6 +6,7 @@ on:
 
 env:
   ZONE: europe-west1-b
+  PROJECT_REGISTRY: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}
 
 jobs:
   deploy:
@@ -53,10 +54,10 @@ jobs:
         run: ${{ matrix.service.buildCommand }}
 
       - name: Tag Docker image
-        run: docker tag novu-${{ matrix.service.name }} eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-${{ matrix.service.name }}
+        run: docker tag novu-${{ matrix.service.name }} $PROJECT_REGISTRY/novu-${{ matrix.service.name }}
 
       - name: Push Docker image
-        run: docker push eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-${{ matrix.service.name }}
+        run: docker push $PROJECT_REGISTRY/novu-${{ matrix.service.name }}
 
       - name: Create env file
         run: gcloud secrets versions access latest --secret=novu > .env.docker
@@ -65,7 +66,7 @@ jobs:
         run: >
           gcloud compute instance-templates create-with-container ${{ matrix.service.name }}-template-${{github.run_number}}
           --container-env-file .env.docker
-          --container-image eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-${{ matrix.service.name }}:latest
+          --container-image $PROJECT_REGISTRY/novu-${{ matrix.service.name }}:latest
           --machine-type ${{ matrix.service.machineType }}
           --tags=allow-health-check
 
