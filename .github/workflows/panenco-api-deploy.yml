@@ -80,6 +80,7 @@ jobs:
         if: steps.mig_exists.outcome != 'success'
         run: >
           gcloud compute instance-groups managed create ${{ matrix.service.name }}-group
+          --initial-delay=180s
           --health-check ${{ matrix.service.name }}-health-check
           --base-instance-name ${{ matrix.service.name }}-instance
           --size 2
