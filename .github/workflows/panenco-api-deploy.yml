@@ -12,15 +12,25 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        TEMPLATE_NAME: ['ws-template-${{github.run_number}}', 'api-template-${{github.run_number}}']
-        GROUP_NAME: [ws-group, api-group]
-        BUILD_IMAGE_COMMAND:
-          ['docker-compose -f docker/docker-compose.panenco.yml -p novu build', 'DOCKER_BUILDKIT=1 pnpm docker:build']
-        CONTAINER_NAME: [novu-ws, novu-api]
-        MACHINE_TYPE: ['f1-micro', 'e2-small']
-        HEALTH_CHECK: [ws-health-check, api-health-check]
-        BASE_INSTANCE_NAME: [ws-instance, api-instance]
-        NAMED_PORTS: ['ws:3002', 'api:3000']
+        # TEMPLATE_NAME: ['ws-template-${{github.run_number}}', 'api-template-${{github.run_number}}']
+        # GROUP_NAME: [ws-group, api-group]
+        service:
+          [
+            {
+              buildCommand:
+                [
+                  'docker-compose -f docker/docker-compose.panenco.yml -p novu build',
+                  'DOCKER_BUILDKIT=1 pnpm docker:build',
+                ],
+            },
+          ]
+        # BUILD_IMAGE_COMMAND:
+        #   ['docker-compose -f docker/docker-compose.panenco.yml -p novu build', 'DOCKER_BUILDKIT=1 pnpm docker:build']
+        # CONTAINER_NAME: [novu-ws, novu-api]
+        # MACHINE_TYPE: ['f1-micro', 'e2-small']
+        # HEALTH_CHECK: [ws-health-check, api-health-check]
+        # BASE_INSTANCE_NAME: [ws-instance, api-instance]
+        # NAMED_PORTS: ['ws:3002', 'api:3000']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -46,50 +56,50 @@ jobs:
       - name: Build Docker image
         run: ${{ matrix.BUILD_IMAGE_COMMAND }}
 
-      - name: Tag Docker image
-        run: docker tag ${{ matrix.CONTAINER_NAME }} eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/${{ matrix.CONTAINER_NAME }}
+      # - name: Tag Docker image
+      #   run: docker tag ${{ matrix.CONTAINER_NAME }} eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/${{ matrix.CONTAINER_NAME }}
 
-      - name: Push Docker image
-        run: docker push eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/${{ matrix.CONTAINER_NAME }}
+      # - name: Push Docker image
+      #   run: docker push eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/${{ matrix.CONTAINER_NAME }}
 
-      - name: Create env file
-        run: gcloud secrets versions access latest --secret=novu > .env.docker
+      # - name: Create env file
+      #   run: gcloud secrets versions access latest --secret=novu > .env.docker
 
-      - name: Create instance template
-        run: >
-          gcloud compute instance-templates create-with-container ${{ matrix.TEMPLATE_NAME }}
-          --container-env-file .env.docker
-          --container-image eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/${{ matrix.CONTAINER_NAME }}:latest 
-          --machine-type ${{ matrix.MACHINE_TYPE }}
-          --tags=allow-health-check
+      # - name: Create instance template
+      #   run: >
+      #     gcloud compute instance-templates create-with-container ${{ matrix.TEMPLATE_NAME }}
+      #     --container-env-file .env.docker
+      #     --container-image eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/${{ matrix.CONTAINER_NAME }}:latest
+      #     --machine-type ${{ matrix.MACHINE_TYPE }}
+      #     --tags=allow-health-check
 
-      - name: Check if MIG exists
-        id: mig_exists
-        continue-on-error: true
-        run: >
-          gcloud compute instance-groups managed describe ${{ matrix.GROUP_NAME }}
-          --zone $ZONE
+      # - name: Check if MIG exists
+      #   id: mig_exists
+      #   continue-on-error: true
+      #   run: >
+      #     gcloud compute instance-groups managed describe ${{ matrix.GROUP_NAME }}
+      #     --zone $ZONE
 
-      - name: Create MIG
-        if: steps.mig_exists.outcome != 'success'
-        run: >
-          gcloud compute instance-groups managed create ${{ matrix.GROUP_NAME }}
-          --health-check ${{ matrix.HEALTH_CHECK }}
-          --base-instance-name ${{ matrix.BASE_INSTANCE_NAME }}
-          --size 2
-          --template ${{ matrix.TEMPLATE_NAME }}
-          --zone $ZONE
+      # - name: Create MIG
+      #   if: steps.mig_exists.outcome != 'success'
+      #   run: >
+      #     gcloud compute instance-groups managed create ${{ matrix.GROUP_NAME }}
+      #     --health-check ${{ matrix.HEALTH_CHECK }}
+      #     --base-instance-name ${{ matrix.BASE_INSTANCE_NAME }}
+      #     --size 2
+      #     --template ${{ matrix.TEMPLATE_NAME }}
+      #     --zone $ZONE
 
-      - name: Set named ports on MIG
-        if: steps.mig_exists.outcome != 'success'
-        run: >
-          gcloud compute instance-groups set-named-ports ${{ matrix.GROUP_NAME }}
-          --named-ports=${{ matrix.NAMED_PORTS }}
-          --zone=$ZONE
+      # - name: Set named ports on MIG
+      #   if: steps.mig_exists.outcome != 'success'
+      #   run: >
+      #     gcloud compute instance-groups set-named-ports ${{ matrix.GROUP_NAME }}
+      #     --named-ports=${{ matrix.NAMED_PORTS }}
+      #     --zone=$ZONE
 
-      - name: Perform rolling update on MIG
-        if: steps.mig_exists.outcome == 'success'
-        run: >
-          gcloud compute instance-groups managed rolling-action start-update ${{ matrix.GROUP_NAME }}
-          --version=template=${{ matrix.TEMPLATE_NAME }} 
-          --zone $ZONE
+      # - name: Perform rolling update on MIG
+      #   if: steps.mig_exists.outcome == 'success'
+      #   run: >
+      #     gcloud compute instance-groups managed rolling-action start-update ${{ matrix.GROUP_NAME }}
+      #     --version=template=${{ matrix.TEMPLATE_NAME }}
+      #     --zone $ZONE
