@@ -1,4 +1,4 @@
-name: 'Panenco deploy frontend'
+name: 'Panenco APP deploy'
 
 on:
   push:

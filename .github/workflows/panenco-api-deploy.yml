@@ -1,4 +1,4 @@
-name: 'Panenco API Deploy'
+name: 'Panenco API deploy'
 
 on:
   push:
