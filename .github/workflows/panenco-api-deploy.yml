@@ -5,17 +5,23 @@ on:
     branches: ['panenco']
 
 env:
-  WS_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws
-  API_IMAGE: eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api
-  WS_TEMPLATE_NAME: ws-template-${{github.run_number}}
-  API_TEMPLATE_NAME: api-template-${{github.run_number}}
-  WS_GROUP_NAME: ws-group
-  API_GROUP_NAME: api-group
   ZONE: europe-west1-b
 
 jobs:
-  deploy-api-and-ws:
+  deploy:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        IMAGE: ['eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-ws', 'eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/novu-api']
+        TEMPLATE_NAME: ['ws-template-${{github.run_number}}', 'api-template-${{github.run_number}}']
+        GROUP_NAME: [ws-group, api-group]
+        BUILD_IMAGE_COMMAND:
+          [docker-compose -f docker/docker-compose.panenco.yml -p novu build, DOCKER_BUILDKIT=1 pnpm docker:build]
+        CONTAINER_NAME: [novu-ws, novu-api]
+        MACHINE_TYPE: ['f1-micro', 'e2-small']
+        HEALTH_CHECK: [ws-health-check, api-health-check]
+        BASE_INSTANCE_NAME: [ws-instance, api-instance]
+        NAMED_PORTS: ['ws:3002', 'api:3000']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -38,101 +44,53 @@ jobs:
       - name: Docker google auth
         run: gcloud auth configure-docker -q
 
-      - name: Build API image
-        run: DOCKER_BUILDKIT=1 pnpm docker:build
+      - name: Build Docker image
+        run: ${{ matrix.BUILD_IMAGE_COMMAND }}
 
-      - name: Build WS image
-        run: docker-compose -f docker/docker-compose.panenco.yml -p novu build
+      - name: Tag Docker image
+        run: docker tag ${{ matrix.CONTAINER_NAME }} ${{ matrix.IMAGE }}
 
-      - name: Tag API image
-        run: docker tag novu-api $API_IMAGE
-
-      - name: Tag WS image
-        run: docker tag novu-ws $WS_IMAGE
-
-      - name: Push API image
-        run: docker push $API_IMAGE
-
-      - name: Push WS image
-        run: docker push $WS_IMAGE
+      - name: Push Docker image
+        run: docker push ${{ matrix.IMAGE }}
 
       - name: Create env file
         run: gcloud secrets versions access latest --secret=novu > .env.docker
 
-      - name: Create API instance template
+      - name: Create instance template
         run: >
-          gcloud compute instance-templates create-with-container $API_TEMPLATE_NAME
+          gcloud compute instance-templates create-with-container ${{ matrix.TEMPLATE_NAME }}
           --container-env-file .env.docker
-          --container-image $API_IMAGE:latest 
-          --machine-type e2-small
+          --container-image ${{ matrix.IMAGE }}:latest 
+          --machine-type ${{ matrix.MACHINE_TYPE }}
           --tags=allow-health-check
 
-      - name: Create WS instance template
-        run: >
-          gcloud compute instance-templates create-with-container $WS_TEMPLATE_NAME
-          --container-env-file .env.docker
-          --container-image $WS_IMAGE:latest 
-          --machine-type f1-micro
-          --tags=allow-health-check
-
-      - name: Check if API MIG exists
-        id: api_mig_exists
+      - name: Check if MIG exists
+        id: mig_exists
         continue-on-error: true
         run: >
-          gcloud compute instance-groups managed describe $API_GROUP_NAME
+          gcloud compute instance-groups managed describe ${{ matrix.GROUP_NAME }}
           --zone $ZONE
 
-      - name: Check if WS MIG exists
-        id: ws_mig_exists
-        continue-on-error: true
+      - name: Create MIG
+        if: steps.mig_exists.outcome != 'success'
         run: >
-          gcloud compute instance-groups managed describe $WS_GROUP_NAME
-          --zone $ZONE
-
-      - name: Create API MIG
-        if: steps.api_mig_exists.outcome != 'success'
-        run: >
-          gcloud compute instance-groups managed create $API_GROUP_NAME
-          --health-check api-health-check
-          --base-instance-name api-instance
+          gcloud compute instance-groups managed create ${{ matrix.GROUP_NAME }}
+          --health-check ${{ matrix.HEALTH_CHECK }}
+          --base-instance-name ${{ matrix.BASE_INSTANCE_NAME }}
           --size 2
-          --template $API_TEMPLATE_NAME
+          --template ${{ matrix.TEMPLATE_NAME }}
           --zone $ZONE
 
-      - name: Create WS MIG
-        if: steps.ws_mig_exists.outcome != 'success'
+      - name: Set named ports on MIG
+        if: steps.mig_exists.outcome != 'success'
         run: >
-          gcloud compute instance-groups managed create $WS_GROUP_NAME
-          --health-check ws-health-check
-          --base-instance-name ws-instance
-          --size 2
-          --template $WS_TEMPLATE_NAME
-          --zone $ZONE
-
-      - name: Set named ports on API MIG
-        if: steps.api_mig_exists.outcome != 'success'
-        run: >
-          gcloud compute instance-groups set-named-ports $API_GROUP_NAME
-          --named-ports=api:3000
+          gcloud compute instance-groups set-named-ports ${{ matrix.GROUP_NAME }}
+          --named-ports=${{ matrix.NAMED_PORTS }}
           --zone=$ZONE
 
-      - name: Set named ports on WS MIG
-        if: steps.ws_mig_exists.outcome != 'success'
+      - name: Perform rolling update on MIG
+        if: steps.mig_exists.outcome == 'success'
         run: >
-          gcloud compute instance-groups set-named-ports $WS_GROUP_NAME
-          --named-ports=ws:3002 
-          --zone=$ZONE
-
-      - name: Perform rolling update on API MIG
-        if: steps.api_mig_exists.outcome == 'success'
-        run: >
-          gcloud compute instance-groups managed rolling-action start-update $API_GROUP_NAME
-          --version=template=$API_TEMPLATE_NAME 
-          --zone $ZONE
-
-      - name: Perform rolling update on WS MIG
-        if: steps.ws_mig_exists.outcome == 'success'
-        run: >
-          gcloud compute instance-groups managed rolling-action start-update $WS_GROUP_NAME
-          --version=template=$WS_TEMPLATE_NAME 
+          gcloud compute instance-groups managed rolling-action start-update ${{ matrix.GROUP_NAME }}
+          --version=template=${{ matrix.TEMPLATE_NAME }} 
           --zone $ZONE
