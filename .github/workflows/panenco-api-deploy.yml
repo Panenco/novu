@@ -15,7 +15,7 @@ jobs:
         TEMPLATE_NAME: ['ws-template-${{github.run_number}}', 'api-template-${{github.run_number}}']
         GROUP_NAME: [ws-group, api-group]
         BUILD_IMAGE_COMMAND:
-          [docker-compose -f docker/docker-compose.panenco.yml -p novu build, DOCKER_BUILDKIT=1 pnpm docker:build]
+          ['docker-compose -f docker/docker-compose.panenco.yml -p novu build', 'DOCKER_BUILDKIT=1 pnpm docker:build']
         CONTAINER_NAME: [novu-ws, novu-api]
         MACHINE_TYPE: ['f1-micro', 'e2-small']
         HEALTH_CHECK: [ws-health-check, api-health-check]
