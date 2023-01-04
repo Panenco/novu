@@ -16,13 +16,8 @@ jobs:
         # GROUP_NAME: [ws-group, api-group]
         service:
           [
-            {
-              buildCommand:
-                [
-                  'docker-compose -f docker/docker-compose.panenco.yml -p novu build',
-                  'DOCKER_BUILDKIT=1 pnpm docker:build',
-                ],
-            },
+            { buildCommand: 'docker-compose -f docker/docker-compose.panenco.yml -p novu build' },
+            { buildCommand: 'DOCKER_BUILDKIT=1 pnpm docker:build' },
           ]
         # BUILD_IMAGE_COMMAND:
         #   ['docker-compose -f docker/docker-compose.panenco.yml -p novu build', 'DOCKER_BUILDKIT=1 pnpm docker:build']
@@ -54,7 +49,7 @@ jobs:
         run: gcloud auth configure-docker -q
 
       - name: Build Docker image
-        run: ${{ matrix.BUILD_IMAGE_COMMAND }}
+        run: ${{ matrix.service.buildCommand }}
 
       # - name: Tag Docker image
       #   run: docker tag ${{ matrix.CONTAINER_NAME }} eu.gcr.io/${{secrets.GOOGLE_PROJECT_ID}}/${{ matrix.CONTAINER_NAME }}
