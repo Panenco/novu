@@ -24,7 +24,7 @@ jobs:
             },
             {
               name: 'api',
-              machineType: 'e2-medium',
+              machineType: 'e2-small',
               buildCommand: 'DOCKER_BUILDKIT=1 pnpm docker:build',
               namedPorts: 'api:3000',
             },
