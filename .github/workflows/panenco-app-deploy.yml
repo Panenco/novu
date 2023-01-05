@@ -1,6 +1,7 @@
 name: 'Panenco APP deploy'
 
 on:
+  workflow_dispatch:
   push:
     branches: ['panenco']
 
