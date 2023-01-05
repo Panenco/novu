@@ -44,7 +44,7 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v0
 
-      - name: Set google project
+      - name: Set project
         run: gcloud --quiet config set project ${{secrets.GOOGLE_PROJECT_ID}}
 
       - name: Docker google auth
