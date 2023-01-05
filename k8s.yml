@@ -1,0 +1,99 @@
+#########################################################
+# Common Environment variables ConfigMap
+#########################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: common-env
+  namespace: panenco-novu
+data:
+  CACHER: redis://redis:6379
+  NODE_ENV: production
+
+---
+#########################################################
+# Redis service
+#########################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: panenco-novu
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      name: redis
+      targetPort: 6379
+
+---
+#########################################################
+# Redis transporter
+#########################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: panenco-novu
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 0
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis
+          ports:
+            - containerPort: 6379
+              name: redis
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: api
+  name: api
+  namespace: panenco-novu
+spec:
+  ports:
+    - name: '3000'
+      port: 3000
+      targetPort: 3000
+  selector:
+    app: api
+
+---
+# API deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: panenco-novu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - envFrom:
+            - configMapRef:
+                name: novu-env
+          image: eu.gcr.io/novu-363712/novu-api:latest
+          name: api
+          ports:
+            - containerPort: 3000

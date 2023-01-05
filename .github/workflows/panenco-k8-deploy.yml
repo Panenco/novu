@@ -1,0 +1,30 @@
+name: 'Panenco GKE deploy'
+
+on:
+  push:
+    branches: ['kube']
+
+jobs:
+  deploy_gke:
+    runs-on: ubuntu-latest
+    env:
+      USE_GKE_GCLOUD_AUTH_PLUGIN: True
+    steps:
+      - name: Login
+        uses: google-github-actions/setup-gcloud@v0 # Setup gcloud
+        with:
+          service_account_key: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+          install_components: 'gke-gcloud-auth-plugin'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v0
+      - name: Set project
+        run: gcloud --quiet config set project ${{secrets.GOOGLE_PROJECT_ID}}
+      - name: Docker google auth
+        run: gcloud auth configure-docker -q
+
+      - run: gcloud container clusters get-credentials panenco-novu --zone europe-west1
+
+      # Deploy latest version
+      - run: kubectl apply -f k8s.yml
+      - run: kubectl rollout restart deployment/api -n panenco-novu
