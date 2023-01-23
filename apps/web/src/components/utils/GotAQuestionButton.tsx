@@ -5,10 +5,10 @@ import { INTERCOM_APP_ID } from '../../config';
 import { Button, Size } from '../../design-system';
 
 const useShowIntercom = () => {
-  const { show } = useIntercom();
+  const intercom = useIntercom();
   const [isIntercomEnabled] = useState<boolean>(!!INTERCOM_APP_ID);
 
-  return useCallback(() => isIntercomEnabled && show(), [isIntercomEnabled, show]);
+  return useCallback(() => isIntercomEnabled && intercom.show(), [isIntercomEnabled, intercom.show]);
 };
 
 export function GotAQuestionButton({ mt, size }: { mt: number; size: Size }) {
